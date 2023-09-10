@@ -64,11 +64,15 @@ export default class App {
 
     context.register(request, { name: "request", type: "value" });
     context.register(params, { name: "params", type: "value" });
+    Object.keys(route.context).map((name) =>
+      context.register(route.context?.[name], { name, type: "value" }),
+    );
     return await context.build<Promise<Response>>(route.handler);
   }
 
   private async handleStaticFiles(request: Request) {
-    const filePath = this.publicPath + new URL(request.url).pathname;
+    const url = new URL(request.url)
+    const filePath = this.publicPath + url.pathname;
     const file = Bun.file(filePath);
     return new Response(file);
   }
