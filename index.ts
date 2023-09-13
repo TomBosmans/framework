@@ -1,79 +1,40 @@
-import Container from "./core/container";
-import ErrorHandler from "./core/error-handler";
-import Logger from "./core/logger";
-import Router from "./core/router";
-import { Errorlike } from "bun";
+import App from "./app";
+import BasicContainer from "./containers/basic-container";
+import Route from "./core/route";
+import BasicLogger from "./loggers/basic-logger";
+import BasicRouter from "./routers/basic-router";
 
-type AppParams = {
-  container: Container;
-  logger: Logger;
-  port: number;
-  errorHandler: ErrorHandler;
-  router: Router;
-  publicPath: string;
-};
+const routes: Route[] = [
+  new Route({
+    method: "GET",
+    path: "/",
+    handler: (dep3: string) => {
+      return new Response(dep3, { status: 200 })
+    }
+  }),
+];
 
-export default class App {
-  public container: AppParams["container"];
-  public logger: AppParams["logger"];
-  public port: AppParams["port"];
-  public errorHandler: AppParams["errorHandler"];
-  public router: AppParams["router"];
-  public publicPath: AppParams["publicPath"];
+const app = new App({
+  port: 3000,
+  publicPath: "public",
+  container: new BasicContainer(),
+  logger: new BasicLogger(),
+  router: new BasicRouter({ routes }),
+  errorHandler: async () =>
+    new Response("Woops something wen't wrong", { status: 500 }),
+});
 
-  constructor({
-    container,
-    logger,
-    port,
-    errorHandler,
-    router,
-    publicPath,
-  }: AppParams) {
-    this.container = container;
-    this.logger = logger;
-    this.port = port;
-    this.errorHandler = errorHandler;
-    this.router = router;
-    this.publicPath = publicPath;
+const dep1 = () => "dep1"
+const dep2 = () => "dep2"
+const dep3 = (dep1: string, dep2: string) => dep1 + " " + dep2
 
-    this.container.register(logger, { name: "logger", type: "value" });
-  }
+app.container.register(dep1, { name: "dep1", type: "function" })
+app.container.register(dep2, { name: "dep2", type: "function" })
+app.container.register(dep3, { name: "dep3", type: "function" })
 
-  public start() {
-    Bun.serve({
-      port: this.port,
-      fetch: async (request) => {
-        const response = await this.handleRoute(request);
-        if (!response) return await this.handleStaticFiles(request);
-        return response;
-      },
-      error: async (error) => await this.handleError(error),
-    });
-  }
+app.container.register("hello world!", {
+  name: "content",
+  type: "value"
+})
 
-  private async handleError(error: Errorlike) {
-    const context = this.container.createScope();
-    context.register(error, { name: "error", type: "value" });
-    return await context.build<Promise<Response>>(this.errorHandler);
-  }
-
-  private async handleRoute(request: Request) {
-    const { route, params } = this.router.match(request);
-    const context = this.container.createScope();
-    if (!route) return null;
-
-    context.register(request, { name: "request", type: "value" });
-    context.register(params, { name: "params", type: "value" });
-    Object.keys(route.context).map((name) =>
-      context.register(route.context?.[name], { name, type: "value" }),
-    );
-    return await context.build<Promise<Response>>(route.handler);
-  }
-
-  private async handleStaticFiles(request: Request) {
-    const url = new URL(request.url)
-    const filePath = this.publicPath + url.pathname;
-    const file = Bun.file(filePath);
-    return new Response(file);
-  }
-}
+app.start();
