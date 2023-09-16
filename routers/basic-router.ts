@@ -16,8 +16,8 @@ type RouterParams = {
 export default class BasicRouter implements Router {
   private routes: RouterParams["routes"];
 
-  constructor({ routes }: RouterParams) {
-    this.routes = sortRoutes(routes);
+  constructor(params?: RouterParams) {
+    this.routes = sortRoutes(params?.routes || []);
   }
 
   public register(route: Route) {

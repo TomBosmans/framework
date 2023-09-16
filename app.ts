@@ -1,51 +1,80 @@
+import BasicContainer from "./containers/basic-container";
+import BasicLogger from "./loggers/basic-logger";
+import BasicRouter from "./routers/basic-router";
 import Container from "./core/container";
 import Handler from "./core/handler";
 import Logger from "./core/logger";
+import Route from "./core/route";
 import Router from "./core/router";
+import basicErrorHandler from "./handlers/basic-error.handler";
+import basicNotFouncHandler from "./handlers/basic-not-found.handler";
 import { Errorlike } from "bun";
+import { join } from "path";
 
 type AppParams = {
-  container: Container;
-  logger: Logger;
-  port: number;
-  errorHandler: Handler;
-  router: Router;
-  publicPath: string;
+  container?: Container;
+  errorHandler?: Handler;
+  notFoundHandler?: Handler;
+  logger?: Logger;
+  modules?: RegExp[];
+  port?: number;
+  publicPath?: string;
+  router?: Router;
+  srcPath?: string;
 };
 
 export default class App {
-  public container: AppParams["container"];
-  public logger: AppParams["logger"];
-  public port: AppParams["port"];
-  public errorHandler: AppParams["errorHandler"];
-  public router: AppParams["router"];
-  public publicPath: AppParams["publicPath"];
+  public container: Container;
+  public errorHandler: Handler;
+  public notFoundHandler: Handler;
+  public logger: Logger;
+  public port: number;
+  public publicPath: string;
+  public router: Router;
+  public srcPath: string;
 
   constructor({
-    container,
-    logger,
-    port,
-    errorHandler,
-    router,
-    publicPath,
+    container = new BasicContainer(),
+    errorHandler = basicErrorHandler,
+    notFoundHandler = basicNotFouncHandler,
+    logger = new BasicLogger(),
+    modules = [/\.middleware\.ts$/, /\.service\.ts$/, /\.route\.ts$/],
+    port = 3000,
+    publicPath = "public",
+    router = new BasicRouter(),
+    srcPath = join(import.meta.dir, "src"),
   }: AppParams) {
     this.container = container;
+    this.errorHandler = errorHandler;
+    this.notFoundHandler = notFoundHandler;
     this.logger = logger;
     this.port = port;
-    this.errorHandler = errorHandler;
-    this.router = router;
     this.publicPath = publicPath;
+    this.router = router;
+    this.srcPath = srcPath;
 
     this.container.register(logger, { name: "logger", type: "value" });
+    this.container.loadModules(modules, this.srcPath);
+    const routeNames = this.container.registrations(/Route/);
+    for (const routeName of routeNames) {
+      const route = this.container.resolve<Route>(routeName);
+      this.router.register(route);
+    }
   }
 
   public start() {
     return Bun.serve({
+      development: false,
       port: this.port,
       fetch: async (request) => {
-        const response = await this.handleRoute(request);
-        if (!response) return await this.handleStaticFiles(request);
-        return response;
+        const url = new URL(request.url);
+        const isPublicUrl = url.pathname.split("/")[1] === this.publicPath;
+        const response = isPublicUrl
+          ? await this.handleStaticFiles(url)
+          : await this.handleRoute(request);
+
+        if (response) return response;
+        return this.handleNotFound(request);
       },
       error: async (error) => await this.handleError(error),
     });
@@ -70,10 +99,15 @@ export default class App {
     return await context.build<Promise<Response>>(route.handler);
   }
 
-  private async handleStaticFiles(request: Request) {
-    const url = new URL(request.url)
-    const filePath = this.publicPath + url.pathname;
+  private async handleStaticFiles(url: URL) {
+    const filePath = url.pathname.slice(1);
     const file = Bun.file(filePath);
-    return new Response(file);
+    if (await file.exists()) return new Response(file);
+  }
+
+  private async handleNotFound(request: Request) {
+    const context = this.container.createScope();
+    context.register(request, { name: "request", type: "value" });
+    return await context.build<Promise<Response>>(this.notFoundHandler);
   }
 }

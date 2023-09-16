@@ -1,4 +1,6 @@
 import Container, { RegisterData } from "../core/container";
+import { findFilesMatchingPattern } from "./utils/findFilesMatchingPattern";
+import { typeOf } from "./utils/typOf";
 
 type ClassType<T> = new (...args: any[]) => T;
 type FunctionType<T> = (...args: any[]) => T;
@@ -58,8 +60,19 @@ export default class BasicContainer implements Container {
 
   public dispose() {}
 
-  public loadModules(modules: string[]) {
-    console.log(modules);
+  public loadModules(modules: RegExp[], directory: string) {
+    const files = modules.reduce<string[]>((result, module) => {
+      const files = findFilesMatchingPattern(directory, module);
+      return [...result, ...files];
+    }, []);
+
+    for (const file of files) {
+      const fileContent = require(file);
+      const registration = fileContent.default;
+      const name = registration.name;
+      const type = typeOf(registration)
+      this.register(registration, { name, type });
+    }
   }
 
   public registrations(pattern?: RegExp) {
@@ -76,7 +89,6 @@ export default class BasicContainer implements Container {
   }
 
   private getParameterNames(func: Function) {
-    // Use a regular expression to extract parameter names from a function's source code.
     const STRIP_COMMENTS = /((\/\/.*$)|(\/\*[\s\S]*?\*\/))/gm;
     const ARGUMENT_NAMES = /([^\s,]+)/g;
     const fnStr = func.toString().replace(STRIP_COMMENTS, "");

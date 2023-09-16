@@ -9,6 +9,6 @@ export default interface Container {
   build<T>(registration: unknown): T
   createScope(): Container
   dispose(): void
-  loadModules(modules: string[]): void
+  loadModules(modules: string[] | RegExp[], directory: string): void
   registrations(pattern: RegExp): string[]
 }
