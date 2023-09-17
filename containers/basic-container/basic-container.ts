@@ -1,11 +1,7 @@
-import Container, { RegisterData } from "../core/container";
-import { findFilesMatchingPattern } from "./utils/findFilesMatchingPattern";
-import { typeOf } from "./utils/typOf";
-
-type ClassType<T> = new (...args: any[]) => T;
-type FunctionType<T> = (...args: any[]) => T;
-type RegisterItem = { type: RegisterData["type"]; registration: unknown };
-type Registry = Record<string, RegisterItem>;
+import Container, { RegisterData } from "../../core/container";
+import { ClassType, FunctionType, Registry } from "./types";
+import { findFilesMatchingPattern } from "./utils/find-files-matching-pattern";
+import { typeOf } from "./utils/type-of";
 
 export default class BasicContainer implements Container {
   private registry: Registry = {};
@@ -27,12 +23,12 @@ export default class BasicContainer implements Container {
     const { type, registration } = match;
 
     if (type === "class") {
-      const dependencies = this.resolveDependencies(registration);
+      const dependencies = this.resolveDependencies(registration, type);
       const classRegistration = registration as ClassType<T>;
       return new classRegistration(...dependencies);
     }
     if (type === "function") {
-      const dependencies = this.resolveDependencies(registration);
+      const dependencies = this.resolveDependencies(registration, type);
       const functionRegistration = registration as FunctionType<T>;
       return functionRegistration(...dependencies);
     }
@@ -40,16 +36,17 @@ export default class BasicContainer implements Container {
   }
 
   public build<T>(resolver: ClassType<T> | FunctionType<T>) {
-    const dependencies = this.resolveDependencies(resolver);
-    const isFunction =
-      typeof resolver === "function" && resolver instanceof Function;
+    const type = typeOf(resolver);
+    const dependencies = this.resolveDependencies(resolver, type);
 
-    if (isFunction) {
+    if (type === "function") {
       const functionResolver = resolver as FunctionType<T>;
       return functionResolver(...dependencies);
-    } else {
+    } else if (type === "class") {
       const classResolver = resolver as ClassType<T>;
       return new classResolver(...dependencies);
+    } else {
+      return resolver as T;
     }
   }
 
@@ -70,7 +67,7 @@ export default class BasicContainer implements Container {
       const fileContent = require(file);
       const registration = fileContent.default;
       const name = registration.name;
-      const type = typeOf(registration)
+      const type = typeOf(registration);
       this.register(registration, { name, type });
     }
   }
@@ -80,15 +77,21 @@ export default class BasicContainer implements Container {
     return Object.keys(this.registry).filter((name) => pattern.test(name));
   }
 
-  private resolveDependencies(constructor: any) {
-    const parameterNames = this.getParameterNames(constructor);
-    const dependencies = parameterNames.map((paramName) =>
-      this.resolve(paramName),
-    );
-    return dependencies;
+  private resolveDependencies(
+    constructor: any,
+    type: "class" | "function" | "value",
+  ) {
+    if (type === "value") return [];
+
+    const parameterNames =
+      type === "function"
+        ? this.getFunctionParameterNames(constructor)
+        : this.getConstructorParameterNames(constructor);
+
+    return parameterNames.map((paramName) => this.resolve(paramName));
   }
 
-  private getParameterNames(func: Function) {
+  private getFunctionParameterNames(func: Function) {
     const STRIP_COMMENTS = /((\/\/.*$)|(\/\*[\s\S]*?\*\/))/gm;
     const ARGUMENT_NAMES = /([^\s,]+)/g;
     const fnStr = func.toString().replace(STRIP_COMMENTS, "");
@@ -96,5 +99,20 @@ export default class BasicContainer implements Container {
       .slice(fnStr.indexOf("(") + 1, fnStr.indexOf(")"))
       .match(ARGUMENT_NAMES);
     return result || [];
+  }
+
+  private getConstructorParameterNames<T>(
+    constructor: new (...args: any[]) => T,
+  ): string[] {
+    const constructorStr = constructor.toString();
+    const constructorMatch = constructorStr.match(/constructor\s*\(([^)]+)/);
+    if (constructorMatch) {
+      const parameters = constructorMatch[1]
+        .split(",")
+        .map((param) => param.trim());
+      return parameters;
+    } else {
+      return [];
+    }
   }
 }

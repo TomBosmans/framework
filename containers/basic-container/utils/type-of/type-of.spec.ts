@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import typeOf from "./typeOf";
+import typeOf from "./type-of";
 
 describe("typeOf", () => {
   it("can check if something is a class", () => {

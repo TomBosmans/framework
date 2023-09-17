@@ -1,3 +1,5 @@
+import { ClassType, FunctionType } from "../containers/basic-container/types"
+
 export type RegisterData = {
   name: string
   type?: "value" | "function" | "class"
@@ -6,9 +8,9 @@ export type RegisterData = {
 export default interface Container {
   register<Registration>(registration: Registration, { name, type }: RegisterData): void
   resolve<T>(name: RegisterData["name"]): T
-  build<T>(registration: unknown): T
+  build<T>(registration: ClassType<T> | FunctionType<T> | T): T
   createScope(): Container
   dispose(): void
   loadModules(modules: string[] | RegExp[], directory: string): void
-  registrations(pattern: RegExp): string[]
+  registrations(pattern?: RegExp): string[]
 }

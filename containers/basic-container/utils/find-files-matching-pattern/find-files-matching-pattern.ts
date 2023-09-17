@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-export function findFilesMatchingPattern(
+export default function findFilesMatchingPattern(
   directory: string,
   pattern: RegExp,
 ): string[] {
